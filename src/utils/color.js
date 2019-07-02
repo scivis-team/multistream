@@ -14,12 +14,13 @@ const permutateAndReverseColors = (colors) => {
 // c：int，色度
 // l：int，亮度
 // nums：int，节点数量
+// flag：是否重排列和反转
 // 返回值：长度为nums的rgb数组
-const getTreeColorsInOneLayer = (hRange, c, l, nums) => {
+const getTreeColorsInOneLayer = (hRange, c, l, nums, flag) => {
   const hInterval = (hRange[1] - hRange[0]) / (nums - 1);
   const hValues = new Array(nums).fill(0).map((v, i) => (hRange[0] + i * hInterval));
   let colors = hValues.map(v => rgb(hcl(v, c, l)));
-  colors = permutateAndReverseColors(colors);
+  if (flag) colors = permutateAndReverseColors(colors);
   return colors;
 };
 

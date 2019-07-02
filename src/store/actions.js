@@ -8,7 +8,7 @@ const actions = {
     const resp = await fetch('/data/test.csv');
 
     if (resp.status === 200) {
-      const data = await resp.text();
+      const data = await resp.json();
       console.log(data);
       // TODO: parse csv
     } else {

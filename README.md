@@ -64,3 +64,6 @@ See [Configuration Reference](https://cli.vuejs.org/config/).
   - 西北：陕西、甘肃、青海、宁夏、新疆
   - 港澳台：香港、澳门、台湾
 
+### TODO
+- 数据可视化：Tree和Stream数据接入和绘制、标尺绘制
+- 交互：hover highlight、brush
