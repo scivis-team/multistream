@@ -37,6 +37,24 @@ See [Configuration Reference](https://cli.vuejs.org/config/).
 
 ### Data Description
 - 中国2013-2017各地区按月灯光总量
+- 处理后的json文件：
+  ```js
+  [
+    {
+      "year": 13,
+      "month": 1,
+      "data": {
+        "1": { // 省份id
+          "ID_1": "1", // 省份id
+          "NAME_1": "安徽省",
+          "ID_G": "3", // 大区id
+          "NAME_G": "华东地区",
+          "SUM": 586652.3700510999 // 省内灯光总和
+        },
+      }
+    },
+  ]
+  ```
 - 行政区划说明：
   - 华北：北京、天津、河北、山西、内蒙古
   - 东北：辽宁、吉林、黑龙江
