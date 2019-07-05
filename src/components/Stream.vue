@@ -17,9 +17,7 @@ export default {
   name: 'Stream',
   data() {
     return {
-      colors: [],
-      keys: [],
-      streams: [],
+      isHighlight: {},
       splitPoints: [],
       detailSvg: null,
       detailPadding: { left: 75, right: 50, top: 40, bottom: 60 },
@@ -97,29 +95,34 @@ export default {
 
       // draw detail
       this.updateDetail(this.splitPoints);
+
+      Object.keys(this.recordsLev1).forEach(k => this.isHighlight[k] = false);
+      Object.keys(this.recordsLev2).forEach(k => this.isHighlight[k] = false);
     },
 
     hoveringNodeName() {
       if (this.hoveringNodeName) {
-        let hoveringNodes = null;
+        let names = null;
         this.tree.each((n) => {
           if (n.data.name === this.hoveringNodeName) {
-            hoveringNodes = n.descendants();
+            names = n.descendants().map(d => d.data.name);
           }
         });
-        this.streams.forEach((s) => {
-          s.highlight = false;
-          hoveringNodes.forEach((n) => {
-            if (n.data.name === s.key) {
-              s.highlight = true;
-            }
-          });
+        Object.keys(this.isHighlight).forEach((k) => {
+          const index = names.indexOf(k);
+          if (index >= 0) {
+            this.isHighlight[k] = true;
+          } else {
+            this.isHighlight[k] = false;
+          }
         });
       } else {
-        this.streams.forEach(s => s.highlight = true);
+        Object.keys(this.isHighlight).forEach((k) => {
+          this.isHighlight[k] = true;
+        });
       }
       d3.selectAll('#detail path')
-        .attr('opacity', d => (d.highlight ? 1 : 0.2));
+        .attr('opacity', d => (this.isHighlight[d.key] ? 1 : 0.2));
     },
   },
   methods: {
@@ -221,7 +224,6 @@ export default {
       //   [points[2], points[3] + 1],
       // ];
 
-      console.log(slices);
       const streamBound = this.getStreamBound(this.streamLev1);
       const rect = this.detailSvg.getBoundingClientRect();
       const scope = {
@@ -240,7 +242,6 @@ export default {
             sliced.key = band.key;
             return sliced;
           });
-        this.streams.push(...stream);
         const keys = Object.keys(data);
         const colors = keys.map(k => this.treeColors[k]);
         const target = d3.select(this.detailSvg).append('g').node();
@@ -370,5 +371,9 @@ export default {
 svg {
   width: 100%;
   height: 100%;
+}
+
+svg text {
+  user-select: none;
 }
 </style>
