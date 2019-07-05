@@ -89,7 +89,7 @@ export default {
   },
   watch: {
     data() {
-      const portions = [0, 0.37, 0.45, 0.55, 0.63, 1];
+      const portions = [0, 0.4, 0.46, 0.54, 0.6, 1];
       this.splitPoints = portions.map(v => Math.floor((this.data.length - 1) * v));
     },
     recordsLev1() {
@@ -126,7 +126,7 @@ export default {
         });
       }
       d3.selectAll('#detail path')
-        .attr('opacity', d => (this.isHighlight[d.key] ? 1 : 0.2));
+        .attr('fill-opacity', d => (this.isHighlight[d.key] ? 1 : 0.3));
     },
   },
   methods: {
@@ -178,6 +178,8 @@ export default {
 
       this.drawStream(stream, colors, target, scope, xScale);
 
+      d3.select('#overview svg').append('rect');
+
       const barColors = ['red', 'blue', 'grey', 'grey', 'blue', 'red'];
       let draggingPointId = null;
       d3.select('#overview svg').selectAll('.bar')
@@ -194,8 +196,30 @@ export default {
         .style('cursor', 'e-resize')
         .on('mousedown', (d, i) => draggingPointId = i);
 
+      let rectStart = null;
+      d3.select('#overview rect')
+        .attr('x', xScale(points[2]))
+        .attr('y', scope.top)
+        .attr('width', xScale(points[3]) - xScale(points[2]))
+        .attr('height', scope.bottom - scope.top)
+        .attr('fill', 'grey')
+        .attr('opacity', 0.5)
+        .style('cursor', 'move')
+        .on('mousedown', () => {
+          rectStart = {
+            mouseX: d3.event.x,
+            p1X: xScale(points[1]),
+            p2X: xScale(points[2]),
+            p3X: xScale(points[3]),
+            p4X: xScale(points[4]),
+          };
+        });
+
       d3.select('#overview')
-        .on('mouseup', () => draggingPointId = null)
+        .on('mouseup', () => {
+          draggingPointId = null;
+          rectStart = null;
+        })
         .on('mousemove', () => {
           if (draggingPointId !== null) {
             let point = xScale.invert(d3.event.x - rect.left);
@@ -210,6 +234,33 @@ export default {
               .data(points)
               .attr('x1', xScale)
               .attr('x2', xScale);
+
+            d3.select('#overview rect')
+              .attr('x', xScale(points[2]))
+              .attr('width', xScale(points[3]) - xScale(points[2]));
+
+            this.updateDetail(points);
+          }
+          if (rectStart) {
+            const deltaX = d3.event.x - rectStart.mouseX;
+            [1, 2, 3, 4].forEach((v) => {
+              let p = xScale.invert(rectStart[`p${v}X`] + deltaX);
+              const left = points[v - 1];
+              const right = points[v + 1];
+              p = Math.max(left + 1, p);
+              p = Math.min(right - 1, p);
+
+              points.splice(v, 1, Math.round(p));
+            });
+
+            d3.selectAll('#overview .bar')
+              .data(points)
+              .attr('x1', xScale)
+              .attr('x2', xScale);
+
+            d3.select('#overview rect')
+              .attr('x', xScale(points[2]))
+              .attr('width', xScale(points[3]) - xScale(points[2]));
 
             this.updateDetail(points);
           }
@@ -254,6 +305,9 @@ export default {
       });
 
       d3.select(this.detailSvg).selectAll('path')
+        .attr('stroke', d => this.treeColors[d.key])
+        .attr('stroke-width', 1)
+        .attr('stroke-opacity', 0.4)
         .on('mouseover', (d) => {
           this.setHoveringNodeName(d.key);
         })
@@ -354,22 +408,34 @@ export default {
         .attr('y1', scope.top)
         .attr('y2', scope.bottom)
         .attr('stroke', '#ccc');
-      d3.select(target).selectAll('text')
+      d3.select(target).selectAll('.month')
         .data(stream[0].map((v, i) => i))
         .enter()
         .append('text')
+        .classed('month', true)
         .attr('x', d => xScale(d + xOffset))
         .attr('dx', -3)
         .attr('dy', -3)
         .attr('y', scope.top)
         .style('font-size', '10px')
         .style('user-select', 'none')
-        .text((d) => {
-          const index = d + xOffset;
-          if (index % 12 === 0) {
-            return 2013 + index / 12;
+        .text(d => (d + xOffset) % 12 + 1);
+      d3.select(target).selectAll('.year')
+        .data(stream[0].map((v, i) => i))
+        .enter()
+        .append('text')
+        .classed('year', true)
+        .attr('x', d => xScale(d + xOffset))
+        .attr('dx', -12)
+        .attr('dy', -15)
+        .attr('y', scope.top)
+        .style('font-size', '10px')
+        .style('user-select', 'none')
+        .text(d => {
+          if ((d + xOffset) % 12 === 0) {
+            return 2013 + (d + xOffset) / 12;
           }
-          return index % 12;
+          return '';
         });
 
       d3.select(target).selectAll('path')
