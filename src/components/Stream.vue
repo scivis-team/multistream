@@ -24,6 +24,7 @@ export default {
       isHighlight: {},
       splitPoints: [],
       detailSvg: null,
+      detailSvgRect: null,
       detailPadding: { left: 75, right: 50, top: 40, bottom: 60 },
       detailRange: [],
     };
@@ -37,6 +38,7 @@ export default {
       return d3.hierarchy(this.treeData);
     },
 
+    // 省级的记录，{name: [val, val, ...]}
     recordsLev2() {
       if (!this.tree) return null;
 
@@ -55,6 +57,7 @@ export default {
       return records;
     },
 
+    // 大区级的记录，{name: [val, val, ...]}
     recordsLev1() {
       if (!this.tree) return null;
 
@@ -67,44 +70,62 @@ export default {
       return records;
     },
 
+    // 大区级的d3流数据
     streamLev1() {
       return this.getStream(this.recordsLev1);
     },
 
+    // 省级的d3流数据
     streamLev2() {
       return this.getStream(this.recordsLev2);
     },
 
+    // 基于分辨率划分点的分段xScale函数，用vue的reactive自动更新
     detailXScale() {
       return this.getXScale(this.splitPoints, this.detailRange);
     },
+
+    detailYScale() {
+      const streamBound = this.getStreamBound(this.streamLev1);
+      const scope = {
+        top: this.detailPadding.top,
+        bottom: this.detailSvgRect.height - this.detailPadding.bottom,
+      };
+      return d3.scaleLinear()
+        .domain(streamBound)
+        .range([scope.top, scope.bottom]);
+    }
   },
   mounted() {
-    this.detailSvg = document.querySelector('#detail svg');
-    const rect = this.detailSvg.getBoundingClientRect();
+    const svg = document.querySelector('#detail svg');
+    this.detailSvg = d3.select(svg);
+    const rect = this.detailSvgRect = svg.getBoundingClientRect();
     this.detailRange = [
       this.detailPadding.left,
       rect.width - this.detailPadding.right,
     ];
   },
   watch: {
-    data() {
+    recordsLev1() {
+      // 初始化划分点
       const portions = [0, 0.4, 0.46, 0.54, 0.6, 1];
       this.splitPoints = portions.map(v => Math.floor((this.data.length - 1) * v));
-    },
-    recordsLev1() {
-      // draw overview
+
+      // 初始化是否高亮的字典
+      Object.keys(this.recordsLev1).forEach(k => this.isHighlight[k] = false);
+      Object.keys(this.recordsLev2).forEach(k => this.isHighlight[k] = false);
+
+      // 画overview
       const target = document.querySelector('#overview svg');
       this.drawOverview(target, this.recordsLev1, this.treeColors, this.splitPoints);
 
-      // draw detail
+      // 画detail
       this.updateDetail(this.splitPoints);
-
-      Object.keys(this.recordsLev1).forEach(k => this.isHighlight[k] = false);
-      Object.keys(this.recordsLev2).forEach(k => this.isHighlight[k] = false);
     },
 
     hoveringNodeName() {
+      // 每当鼠标悬停需要高亮时
+      const isHighlight = this.isHighlight;
       if (this.hoveringNodeName) {
         let names = null;
         this.tree.each((n) => {
@@ -112,21 +133,21 @@ export default {
             names = n.descendants().map(d => d.data.name);
           }
         });
-        Object.keys(this.isHighlight).forEach((k) => {
+        Object.keys(isHighlight).forEach((k) => {
           const index = names.indexOf(k);
           if (index >= 0) {
-            this.isHighlight[k] = true;
+            isHighlight[k] = true;
           } else {
-            this.isHighlight[k] = false;
+            isHighlight[k] = false;
           }
         });
       } else {
-        Object.keys(this.isHighlight).forEach((k) => {
-          this.isHighlight[k] = true;
+        Object.keys(isHighlight).forEach((k) => {
+          isHighlight[k] = true;
         });
       }
       d3.selectAll('#detail path')
-        .attr('fill-opacity', d => (this.isHighlight[d.key] ? 1 : 0.3));
+        .attr('fill-opacity', d => (isHighlight[d.key] ? 1 : 0.3));
     },
   },
   methods: {
@@ -166,6 +187,7 @@ export default {
     },
 
     drawOverview(target, records, colorDict, points) {
+      // 画大区级别的流
       const stream = this.streamLev1;
       const colors = Object.keys(records).map(k => colorDict[k]);
       const rect = target.getBoundingClientRect();
@@ -180,6 +202,7 @@ export default {
 
       d3.select('#overview svg').append('rect');
 
+      // 画那些可以拖的bar
       const barColors = ['red', 'blue', 'grey', 'grey', 'blue', 'red'];
       let draggingPointId = null;
       d3.select('#overview svg').selectAll('.bar')
@@ -196,6 +219,7 @@ export default {
         .style('cursor', 'e-resize')
         .on('mousedown', (d, i) => draggingPointId = i);
 
+      // 画brush里的那个rect
       let rectStart = null;
       d3.select('#overview rect')
         .attr('x', xScale(points[2]))
@@ -215,13 +239,16 @@ export default {
           };
         });
 
+      // 把mouseup和mousemove事件绑定到整个overview上了，防止错位
       d3.select('#overview')
         .on('mouseup', () => {
           draggingPointId = null;
           rectStart = null;
         })
         .on('mousemove', () => {
+          // 对于拖bar的情况
           if (draggingPointId !== null) {
+            // 更新划分点
             let point = xScale.invert(d3.event.x - rect.left);
             const left = points[draggingPointId - 1] || -1;
             const right = points[draggingPointId + 1] || xScale.domain()[1] + 1;
@@ -230,6 +257,7 @@ export default {
 
             points.splice(draggingPointId, 1, Math.round(point));
 
+            // 更新bar的位置和rect的位置
             d3.selectAll('#overview .bar')
               .data(points)
               .attr('x1', xScale)
@@ -239,9 +267,12 @@ export default {
               .attr('x', xScale(points[2]))
               .attr('width', xScale(points[3]) - xScale(points[2]));
 
+            // 更新detail视图
             this.updateDetail(points);
           }
+          // 拖动rect的情况
           if (rectStart) {
+            // 更新划分点位置
             const deltaX = d3.event.x - rectStart.mouseX;
             [1, 2, 3, 4].forEach((v) => {
               let p = xScale.invert(rectStart[`p${v}X`] + deltaX);
@@ -253,6 +284,7 @@ export default {
               points.splice(v, 1, Math.round(p));
             });
 
+            // 更新bar的位置和rect的位置
             d3.selectAll('#overview .bar')
               .data(points)
               .attr('x1', xScale)
@@ -262,34 +294,28 @@ export default {
               .attr('x', xScale(points[2]))
               .attr('width', xScale(points[3]) - xScale(points[2]));
 
+            // 更新detail视图
             this.updateDetail(points);
           }
         });
     },
 
     updateDetail(points) {
-      d3.select(this.detailSvg).selectAll('*').remove();
+      const svg = this.detailSvg;
+      const xScale = this.detailXScale;
+      const yScale = this.detailYScale;
+      svg.selectAll('*').remove();
       this.streams = {};
+
+      const scope = {
+        top: this.detailPadding.top,
+        bottom: this.detailSvgRect.height - this.detailPadding.bottom,
+      };
 
       // 五段啊五段 三段?
       const slices = new Array(5).fill(0).map((v, i) => [points[i], points[i + 1] + 1]);
 
-      // const slices = [
-      //   [points[0], points[5] + 1],
-      //   [points[1], points[4] + 1],
-      //   [points[2], points[3] + 1],
-      // ];
-
-      const streamBound = this.getStreamBound(this.streamLev1);
-      const rect = this.detailSvg.getBoundingClientRect();
-      const scope = {
-        top: this.detailPadding.top,
-        bottom: rect.height - this.detailPadding.bottom,
-      };
-      const yScale = d3.scaleLinear()
-        .domain(streamBound)
-        .range([scope.top, scope.bottom]);
-
+      // 分段画流
       slices.forEach((s, i) => {
         const data = this[`recordsLev${i === 0 || i === 4 ? 1 : 2}`];
         const stream = this[`streamLev${i === 0 || i === 4 ? 1 : 2}`]
@@ -300,11 +326,13 @@ export default {
           });
         const keys = Object.keys(data);
         const colors = keys.map(k => this.treeColors[k]);
-        const target = d3.select(this.detailSvg).append('g').node();
-        this.drawStream(stream, colors, target, scope, this.detailXScale, yScale, s[0]);
+        const target = svg.append('g').node();
+        this.drawStream(stream, colors, target, scope, xScale, yScale, s[0]);
       });
 
-      d3.select(this.detailSvg).selectAll('path')
+      // 给detail的流加描边，highlight的时候显眼一些
+      // 响应hover高亮
+      svg.selectAll('path')
         .attr('stroke', d => this.treeColors[d.key])
         .attr('stroke-width', 1)
         .attr('stroke-opacity', 0.4)
@@ -315,54 +343,58 @@ export default {
           this.setHoveringNodeName(null);
         });
 
-      d3.select(this.detailSvg).append('line')
+      // 画显示hover位置的竖线
+      svg.append('line')
         .classed('hover', true)
         .attr('stroke', 'black')
         .attr('stroke-width', 2);
 
-      d3.select(this.detailSvg)
-        .on('mousemove', () => {
-          if (this.hoveringNodeName) {
-            const band =
-              this.streamLev1.find((s) => s.key === this.hoveringNodeName) ||
-              this.streamLev2.find((s) => s.key === this.hoveringNodeName);
-            const point = Math.round(this.detailXScale.invert(d3.event.x - rect.left));
-            const y = band[point];
-            d3.select(this.detailSvg).select('.hover')
-              .attr('x1', this.detailXScale(point))
-              .attr('x2', this.detailXScale(point))
-              .attr('y1', yScale(y[0]))
-              .attr('y2', yScale(y[1]));
-            d3.select('#info')
-              .style('top', `${d3.event.y + 10}px`)
-              .style('left', `${d3.event.x + 10}px`)
-              .style('visibility', 'visible')
-              .html(`
-                <p>名称：${this.hoveringNodeName}</p>
-                <p>数值：${Math.round(y[1] - y[0])}</p>
-              `);
-          } else {
-            d3.select(this.detailSvg).select('.hover')
-              .attr('x1', 0)
-              .attr('x2', 0)
-              .attr('y1', 0)
-              .attr('y2', 0);
-            d3.select('#info')
-              .style('visibility', 'hidden');
-          }
-        });
+      // 响应mousemove，更新上面的竖线，以及tooltip
+      svg.on('mousemove', () => {
+        const name = this.hoveringNodeName;
+        if (name) {
+          const band =
+            this.streamLev1.find((s) => s.key === name) ||
+            this.streamLev2.find((s) => s.key === name);
+          const point = Math.round(xScale.invert(d3.event.x - this.detailSvgRect.left));
+          const y = band[point];
+          svg.select('.hover')
+            .attr('x1', xScale(point))
+            .attr('x2', xScale(point))
+            .attr('y1', yScale(y[0]))
+            .attr('y2', yScale(y[1]));
+          d3.select('#info')
+            .style('top', `${d3.event.y + 10}px`)
+            .style('left', `${d3.event.x + 10}px`)
+            .style('visibility', 'visible')
+            .html(`
+              <p>名称：${name}</p>
+              <p>数值：${Math.round(y[1] - y[0])}</p>
+            `);
+        } else {
+          svg.select('.hover')
+            .attr('x1', 0)
+            .attr('x2', 0)
+            .attr('y1', 0)
+            .attr('y2', 0);
+          d3.select('#info')
+            .style('visibility', 'hidden');
+        }
+      });
 
+      // 画和overview对应的那几条bar
       const barColors = ['red', 'blue', 'grey', 'grey', 'blue', 'red'];
-      d3.select(this.detailSvg).selectAll('.bar')
+      svg.selectAll('.bar')
         .data(points).enter().append('line')
         .classed('bar', true)
-        .attr('x1', d => this.detailXScale(d))
-        .attr('x2', d => this.detailXScale(d))
+        .attr('x1', d => xScale(d))
+        .attr('x2', d => xScale(d))
         .attr('y1', scope.top)
         .attr('y2', scope.bottom)
         .attr('stroke', (d, i) => barColors[i])
         .attr('stroke-width', 3);
 
+      // 画overview和detail的bar之间的虚线
       const overviewBarPos = [];
       const detailPadding = this.detailPadding;
       d3.selectAll('#overview .bar').each(function () {
@@ -372,10 +404,10 @@ export default {
           +elem.attr('y1') + scope.bottom + detailPadding.bottom,
         ]);
       });
-      d3.select(this.detailSvg).selectAll('.dashed')
+      svg.selectAll('.dashed')
         .data(points).enter().append('line')
         .classed('dashed', true)
-        .attr('x1', d => this.detailXScale(d))
+        .attr('x1', d => xScale(d))
         .attr('y1', scope.bottom)
         .attr('x2', (d, i) => overviewBarPos[i][0])
         .attr('y2', (d, i) => overviewBarPos[i][1])
@@ -398,7 +430,7 @@ export default {
         .y0(d => yScale(d[0]))
         .y1(d => yScale(d[1]))
         .curve(d3.curveNatural);
-      // 绘制
+
       d3.select(target).selectAll('line')
         .data(stream[0].map((v, i) => i))
         .enter()
@@ -408,6 +440,8 @@ export default {
         .attr('y1', scope.top)
         .attr('y2', scope.bottom)
         .attr('stroke', '#ccc');
+
+      // 输出轴上的label
       d3.select(target).selectAll('.month')
         .data(stream[0].map((v, i) => i))
         .enter()
@@ -438,6 +472,7 @@ export default {
           return '';
         });
 
+      // 绘制
       d3.select(target).selectAll('path')
         .data(stream)
         .enter()
@@ -512,6 +547,7 @@ export default {
         return range[1];
       };
 
+      // 强行invert（d3原生scale自带invert
       xScale.invert = (xPx) => {
         let scale = null;
         scales.forEach((s) => {
@@ -533,6 +569,7 @@ export default {
       return xScale;
     },
 
+    // emm不知道怎么描述，总之让detail里的xScale更正常了
     solveCubic(x1, x2, y1, y2, slope1, slope2) {
       const a = [
         [x1 ** 3, x1 * x1, x1, 1],
@@ -543,7 +580,6 @@ export default {
       const b = [y1, y2, slope1, slope2];
       const res = lusolve(a, b);
       const func = x => x ** 3 * res[0][0] + x * x * res[1][0] + x * res[2][0] + res[3][0];
-      // console.log(getCubicRoots(res[0][0], res[1][0], res[2][0], res[3][0] - 300));
       func.invert = y => getCubicRoots(res[0][0], res[1][0], res[2][0], res[3][0] - y)[0].real;
 
       return func;
