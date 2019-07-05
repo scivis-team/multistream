@@ -2,6 +2,7 @@
   <div id="stream">
     <div id="detail">
       <svg></svg>
+      <div id="info"></div>
     </div>
     <div id="overview">
       <svg></svg>
@@ -11,12 +12,15 @@
 <script>
 import * as d3 from 'd3';
 import { mapState, mapGetters, mapActions } from 'vuex';
+import { lusolve } from 'mathjs';
+import { getCubicRoots } from 'cubic-roots';
 import Utils from '../utils';
 
 export default {
   name: 'Stream',
   data() {
     return {
+      streams: {},
       isHighlight: {},
       splitPoints: [],
       detailSvg: null,
@@ -85,7 +89,7 @@ export default {
   },
   watch: {
     data() {
-      const portions = [0, 0.4, 0.45, 0.55, 0.6, 1];
+      const portions = [0, 0.37, 0.45, 0.55, 0.63, 1];
       this.splitPoints = portions.map(v => Math.floor((this.data.length - 1) * v));
     },
     recordsLev1() {
@@ -174,7 +178,7 @@ export default {
 
       this.drawStream(stream, colors, target, scope, xScale);
 
-      const barColors = ['blue', 'red', 'grey', 'grey', 'red', 'blue'];
+      const barColors = ['red', 'blue', 'grey', 'grey', 'blue', 'red'];
       let draggingPointId = null;
       d3.select('#overview svg').selectAll('.bar')
         .data(points)
@@ -214,6 +218,7 @@ export default {
 
     updateDetail(points) {
       d3.select(this.detailSvg).selectAll('*').remove();
+      this.streams = {};
 
       // 五段啊五段 三段?
       const slices = new Array(5).fill(0).map((v, i) => [points[i], points[i + 1] + 1]);
@@ -255,14 +260,78 @@ export default {
         .on('mouseout', () => {
           this.setHoveringNodeName(null);
         });
+
+      d3.select(this.detailSvg).append('line')
+        .classed('hover', true)
+        .attr('stroke', 'black')
+        .attr('stroke-width', 2);
+
+      d3.select(this.detailSvg)
+        .on('mousemove', () => {
+          if (this.hoveringNodeName) {
+            const band =
+              this.streamLev1.find((s) => s.key === this.hoveringNodeName) ||
+              this.streamLev2.find((s) => s.key === this.hoveringNodeName);
+            const point = Math.round(this.detailXScale.invert(d3.event.x - rect.left));
+            const y = band[point];
+            d3.select(this.detailSvg).select('.hover')
+              .attr('x1', this.detailXScale(point))
+              .attr('x2', this.detailXScale(point))
+              .attr('y1', yScale(y[0]))
+              .attr('y2', yScale(y[1]));
+            d3.select('#info')
+              .style('top', `${d3.event.y + 10}px`)
+              .style('left', `${d3.event.x + 10}px`)
+              .style('visibility', 'visible')
+              .html(`
+                <p>名称：${this.hoveringNodeName}</p>
+                <p>数值：${Math.round(y[1] - y[0])}</p>
+              `);
+          } else {
+            d3.select(this.detailSvg).select('.hover')
+              .attr('x1', 0)
+              .attr('x2', 0)
+              .attr('y1', 0)
+              .attr('y2', 0);
+            d3.select('#info')
+              .style('visibility', 'hidden');
+          }
+        });
+
+      const barColors = ['red', 'blue', 'grey', 'grey', 'blue', 'red'];
+      d3.select(this.detailSvg).selectAll('.bar')
+        .data(points).enter().append('line')
+        .classed('bar', true)
+        .attr('x1', d => this.detailXScale(d))
+        .attr('x2', d => this.detailXScale(d))
+        .attr('y1', scope.top)
+        .attr('y2', scope.bottom)
+        .attr('stroke', (d, i) => barColors[i])
+        .attr('stroke-width', 3);
+
+      const overviewBarPos = [];
+      const detailPadding = this.detailPadding;
+      d3.selectAll('#overview .bar').each(function () {
+        const elem = d3.select(this);
+        overviewBarPos.push([
+          elem.attr('x1'),
+          +elem.attr('y1') + scope.bottom + detailPadding.bottom,
+        ]);
+      });
+      d3.select(this.detailSvg).selectAll('.dashed')
+        .data(points).enter().append('line')
+        .classed('dashed', true)
+        .attr('x1', d => this.detailXScale(d))
+        .attr('y1', scope.bottom)
+        .attr('x2', (d, i) => overviewBarPos[i][0])
+        .attr('y2', (d, i) => overviewBarPos[i][1])
+        .attr('stroke-dasharray', '5,5')
+        .attr('stroke', (d, i) => barColors[i])
+        .attr('stroke-width', 1);
     },
 
     // 绘制流图
-    drawStream(stream, colors, target, scope, xScale, yScale, xOffset) {
-      if (xOffset === undefined) {
-        xOffset = 0;
-      }
-
+    drawStream(stream, colors, target, scope, xScale, yScale, xOffset=0) {
       // 缩放
       if (yScale === undefined) {
         const streamBound = this.getStreamBound(stream);
@@ -290,9 +359,18 @@ export default {
         .enter()
         .append('text')
         .attr('x', d => xScale(d + xOffset))
+        .attr('dx', -3)
+        .attr('dy', -3)
         .attr('y', scope.top)
         .style('font-size', '10px')
-        .text(d => d + xOffset);
+        .style('user-select', 'none')
+        .text((d) => {
+          const index = d + xOffset;
+          if (index % 12 === 0) {
+            return 2013 + index / 12;
+          }
+          return index % 12;
+        });
 
       d3.select(target).selectAll('path')
         .data(stream)
@@ -314,7 +392,7 @@ export default {
       const domains = new Array(5).fill(0).map((v, i) => [points[i], points[i + 1]]);
 
       // 算分段的ranges
-      const ratios = [0.7, 1.3, 2, 1.3, 0.7];
+      const ratios = [0.6, 1.3, 2.5, 1.3, 0.6];
       const portions = domains.map((v, i) => (v[1] - v[0]) * ratios[i]);
       const total = portions.reduce((pre, cur) => pre + cur, 0);
       const rangePoints = [0];
@@ -328,10 +406,29 @@ export default {
       ]);
 
       // 做5个分段的scale
-      const scales = new Array(5).fill(0).map((v, i) => (i % 2 ? d3.scaleSqrt() : d3.scaleLinear()).domain(domains[i]).range(ranges[i]));
+      const scales = new Array(5);
+
+      [0, 2, 4].forEach((v) => {
+        scales[v] = d3.scaleLinear().domain(domains[v]).range(ranges[v]);
+      });
+
+      [1, 3].forEach((v) => {
+        const x1 = domains[v][0];
+        const x2 = domains[v][1];
+        const y1 = ranges[v][0];
+        const y2 = ranges[v][1];
+        const slope1 = (ranges[v - 1][1] - ranges[v - 1][0]) / (domains[v - 1][1] - domains[v - 1][0]);
+        const slope2 = (ranges[v + 1][1] - ranges[v + 1][0]) / (domains[v + 1][1] - domains[v + 1][0]);
+        const func = this.solveCubic(x1, x2, y1, y2, slope1, slope2);
+        func.domain = () => domains[v];
+        func.range = () => ranges[v];
+
+        scales[v] = func;
+      });
+
 
       // 拼起来，按照x的值调用
-      return (x) => {
+      const xScale = (x) => {
         let scale = null;
         scales.forEach((s) => {
           const domain = s.domain();
@@ -348,6 +445,42 @@ export default {
         }
         return range[1];
       };
+
+      xScale.invert = (xPx) => {
+        let scale = null;
+        scales.forEach((s) => {
+          const range = s.range();
+          if (xPx >= range[0] && xPx < range[1]) {
+            scale = s;
+          }
+        });
+
+        if (scale) {
+          return scale.invert(xPx);
+        }
+        if (xPx < range[0]) {
+          return points[0];
+        }
+        return points[points.length - 1];
+      }
+
+      return xScale;
+    },
+
+    solveCubic(x1, x2, y1, y2, slope1, slope2) {
+      const a = [
+        [x1 ** 3, x1 * x1, x1, 1],
+        [x2 ** 3, x2 * x2, x2, 1],
+        [3 * x1 * x1, 2 * x1, 1, 0],
+        [3 * x2 * x2, 2 * x2, 1, 0],
+      ];
+      const b = [y1, y2, slope1, slope2];
+      const res = lusolve(a, b);
+      const func = x => x ** 3 * res[0][0] + x * x * res[1][0] + x * res[2][0] + res[3][0];
+      // console.log(getCubicRoots(res[0][0], res[1][0], res[2][0], res[3][0] - 300));
+      func.invert = y => getCubicRoots(res[0][0], res[1][0], res[2][0], res[3][0] - y)[0].real;
+
+      return func;
     },
   },
 };
@@ -364,6 +497,21 @@ export default {
   flex: 1 1;
 }
 
+#detail svg {
+  overflow: visible;
+}
+
+#info {
+  width: 130px;
+  height: 90px;
+  position: absolute;
+  padding: 20px;
+  background: #fff;
+  border: 0.5px solid #ccc;
+  opacity: 0.8;
+  visibility: hidden;
+}
+
 #overview {
   flex: 0 0 200px;
 }
@@ -371,9 +519,5 @@ export default {
 svg {
   width: 100%;
   height: 100%;
-}
-
-svg text {
-  user-select: none;
 }
 </style>
