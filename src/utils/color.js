@@ -21,7 +21,7 @@ const getTreeColorsInOneLayer = (hRange, c, l, nums, flag) => {
   const hValues = new Array(nums).fill(0).map((v, i) => (hRange[0] + i * hInterval));
   let colors = hValues.map(v => rgb(hcl(v, c, l)));
   if (flag) colors = permutateAndReverseColors(colors);
-  return colors;
+  return { colors, hInterval };
 };
 
 export default { getTreeColorsInOneLayer };

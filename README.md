@@ -43,15 +43,15 @@ See [Configuration Reference](https://cli.vuejs.org/config/).
     {
       "year": 13,
       "month": 1,
-      "data": {
-        "1": { // 省份id
-          "ID_1": "1", // 省份id
-          "NAME_1": "安徽省",
-          "ID_G": "3", // 大区id
-          "NAME_G": "华东地区",
-          "SUM": 586652.3700510999 // 省内灯光总和
+      "data": [
+        {
+          "id": "1", // 省份id
+          "name": "安徽省",
+          "gId": "3", // 大区id
+          "gName": "华东地区",
+          "sum": 586652.3700510999 // 省内灯光总和
         },
-      }
+      ]
     },
   ]
   ```

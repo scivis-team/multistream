@@ -12,7 +12,7 @@ import Stream from './components/Stream.vue';
 export default {
   name: 'app',
   mounted() {
-    // this.$store.dispatch('fetchData');
+    this.$store.dispatch('fetchData');
   },
   components: {
     Tree, Stream,
