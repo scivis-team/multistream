@@ -94,7 +94,7 @@ export default {
       return d3.scaleLinear()
         .domain(streamBound)
         .range([scope.top, scope.bottom]);
-    }
+    },
   },
   mounted() {
     const svg = document.querySelector('#detail svg');
@@ -343,45 +343,6 @@ export default {
           this.setHoveringNodeName(null);
         });
 
-      // 画显示hover位置的竖线
-      svg.append('line')
-        .classed('hover', true)
-        .attr('stroke', 'black')
-        .attr('stroke-width', 2);
-
-      // 响应mousemove，更新上面的竖线，以及tooltip
-      svg.on('mousemove', () => {
-        const name = this.hoveringNodeName;
-        if (name) {
-          const band =
-            this.streamLev1.find((s) => s.key === name) ||
-            this.streamLev2.find((s) => s.key === name);
-          const point = Math.round(xScale.invert(d3.event.x - this.detailSvgRect.left));
-          const y = band[point];
-          svg.select('.hover')
-            .attr('x1', xScale(point))
-            .attr('x2', xScale(point))
-            .attr('y1', yScale(y[0]))
-            .attr('y2', yScale(y[1]));
-          d3.select('#info')
-            .style('top', `${d3.event.y + 10}px`)
-            .style('left', `${d3.event.x + 10}px`)
-            .style('visibility', 'visible')
-            .html(`
-              <p>名称：${name}</p>
-              <p>数值：${Math.round(y[1] - y[0])}</p>
-            `);
-        } else {
-          svg.select('.hover')
-            .attr('x1', 0)
-            .attr('x2', 0)
-            .attr('y1', 0)
-            .attr('y2', 0);
-          d3.select('#info')
-            .style('visibility', 'hidden');
-        }
-      });
-
       // 画和overview对应的那几条bar
       const barColors = ['red', 'blue', 'grey', 'grey', 'blue', 'red'];
       svg.selectAll('.bar')
@@ -392,7 +353,8 @@ export default {
         .attr('y1', scope.top)
         .attr('y2', scope.bottom)
         .attr('stroke', (d, i) => barColors[i])
-        .attr('stroke-width', 3);
+        .attr('stroke-width', 3)
+        .style('pointer-events', 'none');
 
       // 画overview和detail的bar之间的虚线
       const overviewBarPos = [];
@@ -414,10 +376,57 @@ export default {
         .attr('stroke-dasharray', '5,5')
         .attr('stroke', (d, i) => barColors[i])
         .attr('stroke-width', 1);
+
+      // 画显示hover位置的竖线
+      svg.append('line')
+        .classed('hover', true)
+        .attr('stroke', 'black')
+        .attr('stroke-width', 2)
+        .style('pointer-events', 'none');
+
+      // 响应mousemove，更新上面的竖线，以及tooltip
+      svg.on('mousemove', () => {
+        const name = this.hoveringNodeName;
+        if (name) {
+          const band =
+            this.streamLev1.find(s => s.key === name) ||
+            this.streamLev2.find(s => s.key === name);
+          const point = Math.round(xScale.invert(d3.event.x - this.detailSvgRect.left));
+          const y = band[point];
+          svg.select('.hover')
+            .attr('x1', xScale(point))
+            .attr('x2', xScale(point))
+            .attr('y1', yScale(y[0]))
+            .attr('y2', yScale(y[1]));
+
+          let left = d3.event.x + 10;
+          const rightBorder = this.detailSvgRect.right - this.detailPadding.right;
+          if (left + 130 > rightBorder) {
+            left = rightBorder - 130;
+          }
+
+          d3.select('#info')
+            .style('top', `${d3.event.y + 10}px`)
+            .style('left', `${left}px`)
+            .style('visibility', 'visible')
+            .html(`
+              <p>名称：${name}</p>
+              <p>数值：${Math.round(y[1] - y[0])}</p>
+            `);
+        } else {
+          svg.select('.hover')
+            .attr('x1', 0)
+            .attr('x2', 0)
+            .attr('y1', 0)
+            .attr('y2', 0);
+          d3.select('#info')
+            .style('visibility', 'hidden');
+        }
+      });
     },
 
     // 绘制流图
-    drawStream(stream, colors, target, scope, xScale, yScale, xOffset=0) {
+    drawStream(stream, colors, target, scope, xScale, yScale, xOffset = 0) {
       // 缩放
       if (yScale === undefined) {
         const streamBound = this.getStreamBound(stream);
@@ -453,7 +462,7 @@ export default {
         .attr('y', scope.top)
         .style('font-size', '10px')
         .style('user-select', 'none')
-        .text(d => (d + xOffset) % 12 + 1);
+        .text(d => ((d + xOffset) % 12) + 1);
       d3.select(target).selectAll('.year')
         .data(stream[0].map((v, i) => i))
         .enter()
@@ -465,7 +474,7 @@ export default {
         .attr('y', scope.top)
         .style('font-size', '10px')
         .style('user-select', 'none')
-        .text(d => {
+        .text((d) => {
           if ((d + xOffset) % 12 === 0) {
             return 2013 + (d + xOffset) / 12;
           }
@@ -551,8 +560,8 @@ export default {
       xScale.invert = (xPx) => {
         let scale = null;
         scales.forEach((s) => {
-          const range = s.range();
-          if (xPx >= range[0] && xPx < range[1]) {
+          const r = s.range();
+          if (xPx >= r[0] && xPx < r[1]) {
             scale = s;
           }
         });
@@ -564,7 +573,7 @@ export default {
           return points[0];
         }
         return points[points.length - 1];
-      }
+      };
 
       return xScale;
     },
@@ -579,7 +588,7 @@ export default {
       ];
       const b = [y1, y2, slope1, slope2];
       const res = lusolve(a, b);
-      const func = x => x ** 3 * res[0][0] + x * x * res[1][0] + x * res[2][0] + res[3][0];
+      const func = x => (x ** 3) * res[0][0] + x * x * res[1][0] + x * res[2][0] + res[3][0];
       func.invert = y => getCubicRoots(res[0][0], res[1][0], res[2][0], res[3][0] - y)[0].real;
 
       return func;
@@ -612,6 +621,7 @@ export default {
   border: 0.5px solid #ccc;
   opacity: 0.8;
   visibility: hidden;
+  pointer-events: none;
 }
 
 #overview {
